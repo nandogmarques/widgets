@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualização da Função de Custo J(w,b)</title>
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-color: #f4f4f9;
+            --text-color: #333;
+            --primary-color: #2563eb;
+            --primary-hover: #1d4ed8;
+            --card-bg: #ffffff;
+            --border-radius: 12px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+            max-width: 800px;
+        }
+
+        h1 {
+            font-size: 2.2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            color: #111827;
+        }
+
+        p {
+            font-size: 1.1rem;
+            color: #4b5563;
+            line-height: 1.6;
+        }
+
+        .controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.1s ease;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        button:active {
+            transform: translateY(2px);
+        }
+
+        button:disabled {
+            background-color: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .dashboard {
+            background-color: var(--card-bg);
+            border-radius: var(--border-radius);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            padding: 1.5rem;
+            width: 100%;
+            max-width: 1000px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #plot {
+            width: 100%;
+            height: 600px;
+        }
+
+        .status-panel {
+            margin-top: 1rem;
+            padding: 1rem;
+            background-color: #f3f4f6;
+            border-radius: 8px;
+            width: 100%;
+            display: flex;
+            justify-content: space-around;
+            font-family: monospace;
+            font-size: 1.1rem;
+            color: #1f2937;
+        }
+
+        @media (max-width: 768px) {
+            #plot {
+                height: 400px;
+            }
+            .status-panel {
+                flex-direction: column;
+                align-items: center;
+                gap: 0.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Função de Custo J(w,b)</h1>
+        <p>Gire a superfície 3D para explorar a "tigela" do erro. Clique no botão abaixo para ver o algoritmo do <strong>Gradiente Descendente</strong> encontrar o fundo da tigela, ajustando o peso (w) e o viés (b) passo a passo.</p>
+    </div>
+
+    <div class="dashboard">
+        <div class="controls">
+            <button id="btn-start">Simular Gradiente Descendente</button>
+            <button id="btn-reset" style="background-color: #4b5563;">Reiniciar</button>
+        </div>
+
+        <div id="plot"></div>
+
+        <div class="status-panel">
+            <span>Passo: <span id="val-step">0</span></span>
+            <span>Peso (w): <span id="val-w">0.00</span></span>
+            <span>Viés (b): <span id="val-b">0.00</span></span>
+            <span>Custo (J): <span id="val-j">0.00</span></span>
+        </div>
+    </div>
+
+    <script>
+        // Configurações e variáveis globais
+        const btnStart = document.getElementById('btn-start');
+        const btnReset = document.getElementById('btn-reset');
+        
+        // Elementos de status
+        const elStep = document.getElementById('val-step');
+        const elW = document.getElementById('val-w');
+        const elB = document.getElementById('val-b');
+        const elJ = document.getElementById('val-j');
+
+        // Dados sintéticos (Exemplo: y = 3x + 4 + ruído)
+        const m = 50; // número de exemplos
+        const x_data = [];
+        const y_data = [];
+        const true_w = 3;
+        const true_b = 4;
+
+        for (let i = 0; i < m; i++) {
+            // Valores de x entre 0 e 2
+            let x = Math.random() * 2;
+            // Ruído aleatório entre -0.5 e 0.5
+            let noise = (Math.random() - 0.5); 
+            let y = true_w * x + true_b + noise;
+            
+            x_data.push(x);
+            y_data.push(y);
+        }
+
+        // Função de Custo J(w,b) = (1/2m) * sum( (w*x + b - y)^2 )
+        // Multiplicado por 1/2m para facilitar o cálculo da derivada, padrão em Machine Learning
+        function computeCost(w, b) {
+            let totalError = 0;
+            for (let i = 0; i < m; i++) {
+                let prediction = w * x_data[i] + b;
+                let error = prediction - y_data[i];
+                totalError += error * error;
+            }
+            return totalError / (2 * m);
+        }
+
+        // Valores para os eixos W e B da superfície 3D
+        const w_vals = [];
+        const b_vals = [];
+        const J_vals = []; // Matriz de custos [b][w]
+
+        const w_min = -1, w_max = 7, w_steps = 40;
+        const b_min = -1, b_max = 9, b_steps = 40;
+
+        // Preenchendo as listas de valores w e b
+        for (let i = 0; i <= w_steps; i++) {
+            w_vals.push(w_min + (w_max - w_min) * (i / w_steps));
+        }
+        for (let i = 0; i <= b_steps; i++) {
+            b_vals.push(b_min + (b_max - b_min) * (i / b_steps));
+        }
+
+        // Calculando o Custo (Eixo Z) para cada combinação (w,b)
+        for (let i = 0; i < b_vals.length; i++) {
+            let j_row = [];
+            for (let k = 0; k < w_vals.length; k++) {
+                j_row.push(computeCost(w_vals[k], b_vals[i]));
+            }
+            J_vals.push(j_row);
+        }
+
+        // Traço 1: Superfície 3D
+        const surfaceTrace = {
+            z: J_vals,
+            x: w_vals,
+            y: b_vals,
+            type: 'surface',
+            colorscale: 'Viridis',
+            opacity: 0.8,
+            showscale: false,
+            hoverinfo: 'none' // Desativa hover na superfície para focar no ponto
+        };
+
+        // Valores Iniciais do Gradiente Descendente
+        const start_w = 0;
+        const start_b = 0;
+        const start_j = computeCost(start_w, start_b);
+
+        // Traço 2: Ponto vermelho que representa o estado atual (w, b, J)
+        const pointTrace = {
+            x: [start_w],
+            y: [start_b],
+            z: [start_j],
+            mode: 'markers',
+            type: 'scatter3d',
+            marker: {
+                color: 'red',
+                size: 8,
+                symbol: 'circle',
+                line: { color: 'white', width: 1 }
+            },
+            name: 'Ponto Atual'
+        };
+
+        const layout = {
+            autosize: true,
+            margin: { l: 0, r: 0, b: 0, t: 0 },
+            scene: {
+                xaxis: { title: 'Peso (w)', range: [w_min, w_max] },
+                yaxis: { title: 'Viés (b)', range: [b_min, b_max] },
+                zaxis: { title: 'Custo J(w,b)' },
+                camera: {
+                    eye: { x: 1.5, y: 1.5, z: 1.2 }
+                }
+            },
+            paper_bgcolor: 'transparent',
+            plot_bgcolor: 'transparent'
+        };
+
+        Plotly.newPlot('plot', [surfaceTrace, pointTrace], layout, {responsive: true, displayModeBar: false});
+        updateStatus(0, start_w, start_b, start_j);
+
+        let gdInterval;
+        let isRunning = false;
+
+        function computeGradients(w, b) {
+            let dj_dw = 0;
+            let dj_db = 0;
+            
+            for (let i = 0; i < m; i++) {
+                let error = (w * x_data[i] + b) - y_data[i];
+                dj_dw += error * x_data[i];
+                dj_db += error;
+            }
+            
+            dj_dw = dj_dw / m;
+            dj_db = dj_db / m;
+            
+            return { dj_dw, dj_db };
+        }
+
+        function startGradientDescent() {
+            if (isRunning) return;
+            isRunning = true;
+            btnStart.disabled = true;
+
+            let current_w = start_w;
+            let current_b = start_b;
+            let learning_rate = 0.2; // Taxa de aprendizado (tamanho do passo)
+            let step = 0;
+            let max_steps = 100;
+
+            gdInterval = setInterval(() => {
+                // 1. Calcula o gradiente (direção da descida)
+                const { dj_dw, dj_db } = computeGradients(current_w, current_b);
+
+                // 2. Atualiza os parâmetros movendo na direção oposta ao gradiente
+                current_w = current_w - learning_rate * dj_dw;
+                current_b = current_b - learning_rate * dj_db;
+                
+                // 3. Calcula o novo custo
+                let current_j = computeCost(current_w, current_b);
+                step++;
+
+                // 4. Atualiza o gráfico (move o ponto vermelho)
+                Plotly.animate('plot', {
+                    data: [{ x: [current_w], y: [current_b], z: [current_j] }],
+                    traces: [1] // Atualiza apenas o traço de índice 1 (o pointTrace)
+                }, {
+                    transition: { duration: 100, easing: 'cubic-in-out' },
+                    frame: { duration: 100, redraw: false }
+                });
+
+                // 5. Atualiza o painel de status em tempo real
+                updateStatus(step, current_w, current_b, current_j);
+
+                // Condição de parada: limite de passos ou aproximação do mínimo
+                if (step >= max_steps || (Math.abs(dj_dw) < 0.001 && Math.abs(dj_db) < 0.001)) {
+                    clearInterval(gdInterval);
+                    isRunning = false;
+                    btnStart.textContent = "Busca Concluída!";
+                }
+            }, 150); // Velocidade da animação (ms)
+        }
+
+        function resetSimulation() {
+            clearInterval(gdInterval);
+            isRunning = false;
+            btnStart.disabled = false;
+            btnStart.textContent = "Simular Gradiente Descendente";
+            
+            Plotly.animate('plot', {
+                data: [{ x: [start_w], y: [start_b], z: [start_j] }],
+                traces: [1]
+            }, {
+                transition: { duration: 500, easing: 'cubic-in-out' },
+                frame: { duration: 500, redraw: false }
+            });
+
+            updateStatus(0, start_w, start_b, start_j);
+        }
+
+        function updateStatus(step, w, b, j) {
+            elStep.textContent = step;
+            elW.textContent = w.toFixed(2);
+            elB.textContent = b.toFixed(2);
+            elJ.textContent = j.toFixed(4);
+        }
+
+        // Atribuindo eventos aos botões
+        btnStart.addEventListener('click', startGradientDescent);
+        btnReset.addEventListener('click', resetSimulation);
+
+    </script>
+</body>
+</html>
